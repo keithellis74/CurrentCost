@@ -6,6 +6,7 @@ import Adafruit_IO as AIO
 remoteMQTTuser = "ptbw2000"
 remoteMQTTpassword = "!!! CHANGE TO YOUR ADAFRUIT.IO KEY. REDACT BEFORE PUSHING !!!"
 remoteMQTTtopic = "PVPower"
+remoteMQTTtopic2 = "Temperature"
 
 # You should not need to change anything below this line.
 
@@ -85,6 +86,7 @@ while(keepLooping):
 					# check return values. I know, bad style.
 					
 					AIOclient.publish(remoteMQTTtopic, watts)
+					AIOclient.publish(remoteMQTTtopic2, temp)
 
 					# Close down connection. A better way to do this would be to create
 					# a class to hold the connection objects, which would allow us to leave
