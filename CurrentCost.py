@@ -10,6 +10,7 @@ ser = serial.Serial(port='/dev/ttyUSB0',
                     stopbits=serial.STOPBITS_ONE,
                     timeout=120)
 
+ser.close()
 ser.open()
 
 keepLooping = True
