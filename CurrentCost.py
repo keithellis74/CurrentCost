@@ -38,6 +38,7 @@ ser.open()
 keepLooping = True
 inputBuffer = ""
 
+AIOclient = AIO.MQTTClient(remoteMQTTuser, remoteMQTTpassword)
 
 while(keepLooping):
 	
@@ -66,9 +67,7 @@ while(keepLooping):
 						
 				if watts > 0 :		
 					print "Temperature: ", temp
-					print "Power: ", watts
-					
-					AIOclient = AIO.MQTTClient(remoteMQTTuser, remoteMQTTpassword)
+					print "Power: ", watts									
 					
 					# Setup the callback functions defined above.
 					AIOclient.on_connect    = AIOconnected
