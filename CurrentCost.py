@@ -18,10 +18,12 @@ remoteMQTTport = 1883
 
 def AIOconnected(client):
 	# Connected function will be called when the client is connected to Adafruit IO.
+	print "Connected to Adafruit IO!"
 	return()
 
 def AIOdisconnected(client):
 	# Disconnected function will be called when the client disconnects.
+	print "Disconnected from Adafruit IO!"
 	return()
 
 
@@ -39,6 +41,18 @@ keepLooping = True
 inputBuffer = ""
 
 AIOclient = AIO.MQTTClient(remoteMQTTuser, remoteMQTTpassword)
+
+# Setup the callback functions defined above.
+AIOclient.on_connect    = AIOconnected
+AIOclient.on_disconnect = AIOdisconnected
+
+# Connect to the Adafruit IO server.
+AIOclient.connect()
+
+# Now the program needs to use a client loop function to ensure messages are
+# sent and received.  There are a few options for driving the message loop,
+# depending on what your program needs to do.
+AIOclient.loop_background()
 
 while(keepLooping):
 	
@@ -69,17 +83,7 @@ while(keepLooping):
 					print "Temperature: ", temp
 					print "Power: ", watts									
 					
-					# Setup the callback functions defined above.
-					AIOclient.on_connect    = AIOconnected
-					AIOclient.on_disconnect = AIOdisconnected
 
-					# Connect to the Adafruit IO server.
-					AIOclient.connect()
-
-					# Now the program needs to use a client loop function to ensure messages are
-					# sent and received.  There are a few options for driving the message loop,
-					# depending on what your program needs to do.
-					AIOclient.loop_background()
 
 					# Publish data element to remote server. This is a blind send - we don't
 					# check return values. I know, bad style.
@@ -87,10 +91,7 @@ while(keepLooping):
 					AIOclient.publish(remoteMQTTtopic, watts)
 					AIOclient.publish(remoteMQTTtopic2, temp)
 
-					# Close down connection. A better way to do this would be to create
-					# a class to hold the connection objects, which would allow us to leave
-					# the io.adafruit.com connection open all the time. Version 02....
-					AIOclient.disconnect()
+					
 					
 					
 				
@@ -102,7 +103,11 @@ while(keepLooping):
 	except KeyboardInterrupt:
 		print "Closing down"
 		keepLooping = False
-		
+
+# Close down connection. A better way to do this would be to create
+# a class to hold the connection objects, which would allow us to leave
+# the io.adafruit.com connection open all the time. Version 02....
+AIOclient.disconnect()		
 
 ser.close()
 
