@@ -10,6 +10,7 @@ mqttUser = 'kellis'
 mqttPassword = 'cul8erm8'
 
 client = mqtt.Client(client_id="CurrentCost")
+#username_pw_set(username="kellis”, password=”cul8erm8”)
 client.connect(mqttBroker) 
 
 
@@ -67,6 +68,9 @@ def getStream():
 			print ("Closing down")
 			keepLooping = False
 
+
+
+#def main():
 looping = True
 while(looping):
 	try:
@@ -74,8 +78,8 @@ while(looping):
 		print("Temperature = ", temp)
 		print("Power = ", watts)
 		time.sleep(0.5)
-		client.publish("TEMPERATURE", temp)
-		client.publish("POWER", watts)
+		client.publish("homeassistant/currentcost/temperature", temp)
+		client.publish("homeassistant/currentcost/power", watts)
 
 
 	except KeyboardInterrupt:
@@ -88,3 +92,6 @@ while(looping):
 # the io.adafruit.com connection open all the time. Version 02....
 
 ser.close()
+
+#if __name__ == "__main__":
+#	main()
