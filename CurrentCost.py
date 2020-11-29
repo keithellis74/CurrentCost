@@ -1,15 +1,20 @@
 import serial
 import xml.etree.ElementTree as ET
-import datetime
 import time
 import paho.mqtt.client as mqtt 
+from influxdb import InfluxDBClient
+import json
 
+# Setup MQTT
 mqttBroker ="192.168.54.30" 
-
 client = mqtt.Client(client_id="CurrentCost")
 client.connect(mqttBroker) 
 
+# Setup Influx
+influxclient = InfluxDBClient(host='192.168.54.30', port=8086)
+influxclient.switch_database('CurrentCost')
 
+# Setup serial connection
 ser = serial.Serial(port='/dev/tty.usbserial-DN03ZPK9',
                     baudrate=2400,
                     bytesize=serial.EIGHTBITS,
@@ -19,8 +24,6 @@ ser = serial.Serial(port='/dev/tty.usbserial-DN03ZPK9',
 
 ser.close()
 ser.open()
-
-
 
 
 def getStream():
@@ -65,29 +68,91 @@ def getStream():
 			keepLooping = False
 
 
+def publishToMQTT(temp, watts):
+	client.publish("homeassistant/currentcost/temperature", temp)
+	client.publish("homeassistant/currentcost/power", watts)
 
-#def main():
-looping = True
-while(looping):
-	try:
-		temp, watts = getStream()
-		print("Temperature = ", temp)
-		print("Power = ", watts)
-		time.sleep(0.5)
-		client.publish("homeassistant/currentcost/temperature", temp)
-		client.publish("homeassistant/currentcost/power", watts)
+def getAverage(data):
+	total = 0
+	for watts in data:
+		total += watts
+	if len(data) != 0:
+		return int(total/len(data))
+
+def create_json(data):
+    #influx data json structure
+    json_body = [
+        {
+            "measurement": "CurrentCost",
+            '''
+			"tags": {
+                "areaName": data["data"][0]["areaName"],
+                "areaCode": data['data'][0]['areaCode']
+            },
+			'''
+            "time": data["lastUpdate"],
+            "fields": {
+                "newCases": data['data'][0]['newCasesByPublishDate'],
+                "cumulativeCases": data['data'][0]['cumCasesByPublishDate'],
+                "newDeaths": data['data'][0]['newDeathsByDeathDate'],
+                "cumulativeDeaths": data['data'][0]['cumDeathsByDeathDate']
+            }
+        }
+    ]
+    return json_body
 
 
-	except KeyboardInterrupt:
-			print ("Closing down")
-			looping = False
+def main():
+	looping = True
+	averageDuration1 = 60 # time in seconds
+	averageDuration2 = 60 * 5 # 5 minutes
+	averageDuration3 = 60 * 60 # 1 hour
+	data1 = []
+	data2 = []
+	data3 = []
+	calculateAverage1 = time.perf_counter() + averageDuration1
+	calculateAverage2 = time.perf_counter() + averageDuration2
+	calculateAverage3 = time.perf_counter() + averageDuration3
+	while(looping):
+		try:
+			temp, watts = getStream()
+			data1.append(watts)
+			data2.append(watts)
+			data3.append(watts)
+			print(data1)
+			print(data2)
+			print(data3)
+
+			# record data for 60 second average
+			if time.perf_counter() > calculateAverage1:
+				print("Last 60 seconds average = ",getAverage(data1))
+				data1 = []
+				calculateAverage1 = time.perf_counter() + averageDuration1
+
+			# record data for 5 munbute average
+			if time.perf_counter() > calculateAverage2:
+				print("Last 5 minute average = ",getAverage(data2))
+				data2 = []
+				calculateAverage2 = time.perf_counter() + averageDuration2
+
+			# record data for 60 munbute average
+			if time.perf_counter() > calculateAverage3:
+				print("Last 60 minute average = ",getAverage(data3))
+				data3 = []
+				calculateAverage3 = time.perf_counter() + averageDuration3
+
+			print("Temperature = ", temp)
+			print("Power = ", watts)
+			publishToMQTT(temp, watts)
+			time.sleep(2)
+			
+
+		except KeyboardInterrupt:
+				print ("Closing down")
+				looping = False
 	
 
-# Close down connection. A better way to do this would be to create
-# a class to hold the connection objects, which would allow us to leave
-# the io.adafruit.com connection open all the time. Version 02....
 
-ser.close()
-
-#if __name__ == "__main__":
-#	main()
+if __name__ == "__main__":
+	main()
+	ser.close()
