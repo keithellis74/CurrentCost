@@ -5,12 +5,8 @@ import time
 import paho.mqtt.client as mqtt 
 
 mqttBroker ="192.168.54.30" 
-mqttPort = 1883
-mqttUser = 'kellis'
-mqttPassword = 'cul8erm8'
 
 client = mqtt.Client(client_id="CurrentCost")
-#username_pw_set(username="kellis”, password=”cul8erm8”)
 client.connect(mqttBroker) 
 
 
