@@ -15,7 +15,7 @@ influxclient = InfluxDBClient(host='192.168.54.30', port=8086)
 influxclient.switch_database('CurrentCost')
 
 # Setup serial connection
-ser = serial.Serial(port='/dev/tty.usbserial-DN03ZPK9',
+ser = serial.Serial(port='/dev/ttyAMA0',
                     baudrate=2400,
                     bytesize=serial.EIGHTBITS,
                     parity=serial.PARITY_NONE,
@@ -35,12 +35,12 @@ def getStream():
 			if ser.in_waiting > 0:
 				x = ser.read(ser.in_waiting)
 				inputBuffer = inputBuffer + str(x, 'utf-8')
-				
+
 				if inputBuffer.find("</msg>") > 0:
 					tempbuf = inputBuffer.split("</msg>", 1)
 					inputBuffer = tempbuf[1]
 					tempbuf[0] = tempbuf[0]+"</msg>"
-					
+
 					root = ET.fromstring(tempbuf[0])
 
 					temp = 0
@@ -51,13 +51,13 @@ def getStream():
 							temp = float(child.text)
 						if child.tag == "ch1" :
 							watts = int(child.find('watts').text)
-							
-					if watts > 0 :	
+
+					if watts > 0 :
 						receiving = False
-						return temp, watts	
+						return temp, watts
 						#print("Temperature: ", temp)
-						#print("Power: ", watts)									
-						
+						#print("Power: ", watts)
+
 
 		except serial.SerialTimeoutException:
 			print ("TimeOut Error")
@@ -68,9 +68,18 @@ def getStream():
 			keepLooping = False
 
 
-def publishToMQTT(temp, watts):
+def publishToMQTT(temp, watts, averageWatts):
 	client.publish("homeassistant/currentcost/temperature", temp)
 	client.publish("homeassistant/currentcost/power", watts)
+	location = ["homeassistant/currentcost/average_power60s",
+			"homeassistant/currentcost/average_power5m",
+			"homeassistant/currentcost/average_power60m"]
+	print("averageWatts = ", averageWatts)
+	for i in range(len(averageWatts)):
+		if averageWatts[i] > 0:
+			client.publish(location[i], averageWatts[i])
+			print("Publishing ", location[i], averageWatts[i])	
+
 
 def getAverage(data):
 	total = 0
@@ -103,6 +112,7 @@ def create_json(data):
 
 
 def main():
+	client.loop_start()
 	looping = True
 	averageDuration1 = 60 # time in seconds
 	averageDuration2 = 60 * 5 # 5 minutes
@@ -110,6 +120,7 @@ def main():
 	data1 = []
 	data2 = []
 	data3 = []
+	averageWatts = [0,0,0]
 	calculateAverage1 = time.perf_counter() + averageDuration1
 	calculateAverage2 = time.perf_counter() + averageDuration2
 	calculateAverage3 = time.perf_counter() + averageDuration3
@@ -119,38 +130,42 @@ def main():
 			data1.append(watts)
 			data2.append(watts)
 			data3.append(watts)
-			print(data1)
-			print(data2)
-			print(data3)
+			#print(data1)
+			#print(data2)
+			#print(data3)
 
 			# record data for 60 second average
 			if time.perf_counter() > calculateAverage1:
-				print("Last 60 seconds average = ",getAverage(data1))
+				averageWatts[0] = getAverage(data1)
+				print("Last 60 seconds average = ",averageWatts[0])
 				data1 = []
 				calculateAverage1 = time.perf_counter() + averageDuration1
 
 			# record data for 5 munbute average
 			if time.perf_counter() > calculateAverage2:
-				print("Last 5 minute average = ",getAverage(data2))
+				averageWatts[1] =  getAverage(data2)
+				print("Last 5 minute average = ", averageWatts[1])
 				data2 = []
 				calculateAverage2 = time.perf_counter() + averageDuration2
 
 			# record data for 60 munbute average
 			if time.perf_counter() > calculateAverage3:
-				print("Last 60 minute average = ",getAverage(data3))
+				averageWatts[2] = getAverage(data3)
+				print("Last 60 minute average = ",averageWatts[2])
 				data3 = []
 				calculateAverage3 = time.perf_counter() + averageDuration3
 
 			print("Temperature = ", temp)
 			print("Power = ", watts)
-			publishToMQTT(temp, watts)
-			time.sleep(2)
-			
+			publishToMQTT(temp, watts, averageWatts)
+			averageWatts = [0,0,0]
+			time.sleep(3)
+
 
 		except KeyboardInterrupt:
 				print ("Closing down")
 				looping = False
-	
+
 
 
 if __name__ == "__main__":
