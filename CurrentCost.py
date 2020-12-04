@@ -27,10 +27,9 @@ ser.open()
 
 
 def getStream():
-	keepLooping = True
 	inputBuffer = ""
 	receiving = True
-	while receiving == True and keepLooping == True:
+	while receiving == True:
 		try:
 			if ser.in_waiting > 0:
 				x = ser.read(ser.in_waiting)
@@ -65,7 +64,7 @@ def getStream():
 			print ("serial Error")
 		except KeyboardInterrupt:
 			print ("Closing down")
-			keepLooping = False
+			receiving = False
 
 
 def publishToMQTT(temp, watts, averageWatts):
@@ -78,61 +77,60 @@ def publishToMQTT(temp, watts, averageWatts):
 	for i in range(len(averageWatts)):
 		if averageWatts[i] > 0:
 			client.publish(location[i], averageWatts[i])
-			print("Publishing ", location[i], averageWatts[i])	
+			print("Publishing ", location[i], averageWatts[i])
 
 
 def getAverage(data):
-	total = 0
-	for watts in data:
-		total += watts
 	if len(data) != 0:
+		total = sum(data)
 		return int(total/len(data))
+	else:
+		return None
 
+# Data structure as required by InfluxDB
 def create_json(data):
     #influx data json structure
     json_body = [
         {
-            "measurement": "CurrentCost",
-            '''
-			"tags": {
-                "areaName": data["data"][0]["areaName"],
-                "areaCode": data['data'][0]['areaCode']
-            },
-			'''
-            "time": data["lastUpdate"],
-            "fields": {
-                "newCases": data['data'][0]['newCasesByPublishDate'],
-                "cumulativeCases": data['data'][0]['cumCasesByPublishDate'],
-                "newDeaths": data['data'][0]['newDeathsByDeathDate'],
-                "cumulativeDeaths": data['data'][0]['cumDeathsByDeathDate']
-            }
-        }
-    ]
+		"measurement": "powerUsage",
+
+		"tags": {
+			"resource": "electricity",
+			"location": "20 Cedarcroft Road"
+			},
+
+		"time": data["lastUpdate"], #Need to get the current time and place here
+		"fields": {
+			"power": "data to go here",
+			"power_60s_avg": "data to go here",
+			"power_5min_avg": "data to go here",
+			"poer_60min_avg": "data to go here"
+			}
+		}
+	]
     return json_body
 
 
 def main():
-	client.loop_start()
+	client.loop_start() # Start the MQTT loop
 	looping = True
 	averageDuration1 = 60 # time in seconds
 	averageDuration2 = 60 * 5 # 5 minutes
 	averageDuration3 = 60 * 60 # 1 hour
+	couter = [0, 0, 0] # Store number of readings for each average, 60s, 5min and 60min
 	data1 = []
 	data2 = []
 	data3 = []
-	averageWatts = [0,0,0]
+	averageWatts = [0,0,0]  # store the latest average readings here
 	calculateAverage1 = time.perf_counter() + averageDuration1
 	calculateAverage2 = time.perf_counter() + averageDuration2
 	calculateAverage3 = time.perf_counter() + averageDuration3
 	while(looping):
 		try:
-			temp, watts = getStream()
+			temp, watts = getStream()  # Get the latest temperature and power readings from CurrentCost
 			data1.append(watts)
 			data2.append(watts)
 			data3.append(watts)
-			#print(data1)
-			#print(data2)
-			#print(data3)
 
 			# record data for 60 second average
 			if time.perf_counter() > calculateAverage1:

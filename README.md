@@ -18,6 +18,7 @@ A two wire connection is needed, ground and data, this can be connected directly
 The data comes out of the CurrentCost at 2400kbp/s
 
 ## Prerequisits
+The following python libraries are required:
  * pyserial, install with 
  ```
  pip install pyserial
