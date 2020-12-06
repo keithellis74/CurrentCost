@@ -1,6 +1,7 @@
 import serial
 import xml.etree.ElementTree as ET
 import time
+import datetime
 import paho.mqtt.client as mqtt 
 from influxdb import InfluxDBClient
 import json
@@ -80,17 +81,34 @@ def publishToMQTT(temp, watts, averageWatts):
 			print("Publishing ", location[i], averageWatts[i])
 
 
-def getAverage(data):
-	if len(data) != 0:
-		total = sum(data)
-		return int(total/len(data))
+def getAverage(data, count):
+	if len(data) >= count:
+		total = sum(data[-1:count*-1-1:-1])
+		print("******** Average ********")
+		print("Data = ", data)
+		print("Count = ", count)
+		print("Total = ", total)
+		print("Average = ", int(total/count))
+		print("Average data = ", data[-1:count*-1-1:-1])
+		return int(total/count)
 	else:
 		return None
 
+
+# Get date formatted for Influx
+def getDate():
+	date = datetime.datetime.now()
+	return date.strftime("%Y-%m-%dT%H:%M:%S%Z")
+
+
 # Data structure as required by InfluxDB
-def create_json(data):
+def createJson(temp, watts, averageWatts):
     #influx data json structure
-    json_body = [
+	for i in range(len(averageWatts)):
+		if averageWatts[i] == 0:
+			averageWatts[i] = None
+
+	json_body = [
         {
 		"measurement": "powerUsage",
 
@@ -99,16 +117,21 @@ def create_json(data):
 			"location": "20 Cedarcroft Road"
 			},
 
-		"time": data["lastUpdate"], #Need to get the current time and place here
+		"time": getDate(),
 		"fields": {
-			"power": "data to go here",
-			"power_60s_avg": "data to go here",
-			"power_5min_avg": "data to go here",
-			"poer_60min_avg": "data to go here"
+			"temperature": temp,
+			"power": watts,
+			"power_60s_avg": averageWatts[0],
+			"power_5min_avg": averageWatts[1],
+			"poer_60min_avg": averageWatts[2]
 			}
 		}
 	]
-    return json_body
+	return json_body
+
+def publishToInflux(temp, watts, averageWatts):
+	data = createJson(temp, watts, averageWatts)
+	influxclient.write_points(data)
 
 
 def main():
@@ -117,45 +140,53 @@ def main():
 	averageDuration1 = 60 # time in seconds
 	averageDuration2 = 60 * 5 # 5 minutes
 	averageDuration3 = 60 * 60 # 1 hour
-	couter = [0, 0, 0] # Store number of readings for each average, 60s, 5min and 60min
-	data1 = []
-	data2 = []
-	data3 = []
+	counter = [0, 0, 0] # Store number of readings for each average, 60s, 5min and 60min
+	data = []
 	averageWatts = [0,0,0]  # store the latest average readings here
-	calculateAverage1 = time.perf_counter() + averageDuration1
-	calculateAverage2 = time.perf_counter() + averageDuration2
-	calculateAverage3 = time.perf_counter() + averageDuration3
+	now = time.perf_counter()
+	calculateAverage1 = now + averageDuration1
+	calculateAverage2 = now + averageDuration2
+	calculateAverage3 = now + averageDuration3
 	while(looping):
 		try:
 			temp, watts = getStream()  # Get the latest temperature and power readings from CurrentCost
-			data1.append(watts)
-			data2.append(watts)
-			data3.append(watts)
+			data.append(watts)
+			for i in range(3):
+				counter[i] += 1
+			while len(data) > max(counter):
+				data.pop(0)
+			print("length of data = ", len(data))
+			print("max counter = ", max(counter))
 
 			# record data for 60 second average
 			if time.perf_counter() > calculateAverage1:
-				averageWatts[0] = getAverage(data1)
+				averageWatts[0] = getAverage(data, counter[0])
 				print("Last 60 seconds average = ",averageWatts[0])
 				data1 = []
 				calculateAverage1 = time.perf_counter() + averageDuration1
+				counter[0] = 0
 
 			# record data for 5 munbute average
 			if time.perf_counter() > calculateAverage2:
-				averageWatts[1] =  getAverage(data2)
+				averageWatts[1] =  getAverage(data, counter[1])
 				print("Last 5 minute average = ", averageWatts[1])
 				data2 = []
 				calculateAverage2 = time.perf_counter() + averageDuration2
+				counter[1] = 0
 
 			# record data for 60 munbute average
 			if time.perf_counter() > calculateAverage3:
-				averageWatts[2] = getAverage(data3)
+				averageWatts[2] = getAverage(data, counter[2])
 				print("Last 60 minute average = ",averageWatts[2])
 				data3 = []
 				calculateAverage3 = time.perf_counter() + averageDuration3
+				counter[2] = 0
 
 			print("Temperature = ", temp)
 			print("Power = ", watts)
 			publishToMQTT(temp, watts, averageWatts)
+			publishToInflux(temp, watts, averageWatts)
+#			print(createJson(temp, watts, averageWatts))
 			averageWatts = [0,0,0]
 			time.sleep(3)
 
