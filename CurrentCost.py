@@ -4,7 +4,6 @@ import time
 import datetime
 import paho.mqtt.client as mqtt 
 from influxdb import InfluxDBClient
-import json
 
 # Setup MQTT
 mqttBroker ="192.168.54.30" 
@@ -12,7 +11,7 @@ client = mqtt.Client(client_id="CurrentCost")
 client.connect(mqttBroker) 
 
 # Setup Influx
-influxclient = InfluxDBClient(host='192.168.54.30', port=8086)
+influxclient = InfluxDBClient(host='192.168.54.30', port=8086, timeout = 3)
 influxclient.switch_database('CurrentCost')
 
 # Setup serial connection
@@ -26,6 +25,12 @@ ser = serial.Serial(port='/dev/ttyAMA0',
 ser.close()
 ser.open()
 
+debug = True
+
+# print to screen if debug is True
+def _print(item):
+	if debug == True:
+		print(item)
 
 def getStream():
 	inputBuffer = ""
@@ -66,7 +71,11 @@ def getStream():
 		except KeyboardInterrupt:
 			print ("Closing down")
 			receiving = False
-
+		except UnicodeDecodeError:
+			print("Unicode Decode error")
+			time.sleep(1)
+		except:
+			print("Unknown error")
 
 def publishToMQTT(temp, watts, averageWatts):
 	client.publish("homeassistant/currentcost/temperature", temp)
@@ -131,7 +140,20 @@ def createJson(temp, watts, averageWatts):
 
 def publishToInflux(temp, watts, averageWatts):
 	data = createJson(temp, watts, averageWatts)
-	influxclient.write_points(data)
+	trys = 0
+	success = False
+	while not success:
+		try:
+			influxclient.write_points(data)
+		except:
+			trys +=1
+			print("Failed to write to Influx {} times:".format(trys))
+			if trys > 4:
+				success = True
+			time.sleep(5)
+		else:
+			success = True
+			print("Published to Influx with {} trys".format(trys))
 
 
 def main():
@@ -144,9 +166,9 @@ def main():
 	data = []
 	averageWatts = [0,0,0]  # store the latest average readings here
 	now = time.perf_counter()
-	calculateAverage1 = now + averageDuration1
-	calculateAverage2 = now + averageDuration2
-	calculateAverage3 = now + averageDuration3
+	calculateAverage1 = now + averageDuration1 #calculate when the period ends
+	calculateAverage2 = now + averageDuration2 # calculate when the perion ends
+	calculateAverage3 = now + averageDuration3 # calculate when the period ends
 	while(looping):
 		try:
 			temp, watts = getStream()  # Get the latest temperature and power readings from CurrentCost
@@ -162,7 +184,6 @@ def main():
 			if time.perf_counter() > calculateAverage1:
 				averageWatts[0] = getAverage(data, counter[0])
 				print("Last 60 seconds average = ",averageWatts[0])
-				data1 = []
 				calculateAverage1 = time.perf_counter() + averageDuration1
 				counter[0] = 0
 
@@ -170,7 +191,6 @@ def main():
 			if time.perf_counter() > calculateAverage2:
 				averageWatts[1] =  getAverage(data, counter[1])
 				print("Last 5 minute average = ", averageWatts[1])
-				data2 = []
 				calculateAverage2 = time.perf_counter() + averageDuration2
 				counter[1] = 0
 
@@ -178,7 +198,6 @@ def main():
 			if time.perf_counter() > calculateAverage3:
 				averageWatts[2] = getAverage(data, counter[2])
 				print("Last 60 minute average = ",averageWatts[2])
-				data3 = []
 				calculateAverage3 = time.perf_counter() + averageDuration3
 				counter[2] = 0
 
